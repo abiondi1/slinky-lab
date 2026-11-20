@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slinky Harmonics Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: friendly classroom lab bench, clear and calm, nothing cute
+   IDEA: the hallway floor with painter's tape, a slinky, and a tape measure
+   PICTURE: top-down floor with a live, physically driven slinky (finite-difference wave equation)
+   COLOUR and TYPE: maple floor, painter's-tape blue, safety-orange flags; Barlow Condensed + Barlow
+   LAYOUT: modest title, big floor canvas, then a lab bench of controls that wraps to one column */
+:root{color-scheme:light;--bg:#f4f1ea;--ink:#1b1d20;--mute:#5d6168;--card:#fff;--line:#d9d4c8;--tape:#2f7fd1;--flag:#f0641e}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#15171a;--ink:#eceae4;--mute:#a3a7ad;--card:#202328;--line:#353940}}
+:root[data-theme=dark]{color-scheme:dark;--bg:#15171a;--ink:#eceae4;--mute:#a3a7ad;--card:#202328;--line:#353940}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(18px,3vw,36px) max(4vw,14px)}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font:700 clamp(30px,4.4vw,46px)/1.05 "Barlow Condensed",sans-serif;margin:0 0 6px;text-wrap:balance}
+.sub{color:var(--mute);margin:0 0 16px;max-width:70ch}
+.fig{position:relative;height:clamp(300px,42vw,440px);border-radius:14px;overflow:hidden;box-shadow:0 2px 0 var(--line),0 10px 30px rgba(0,0,0,.12);touch-action:pan-y}
+.fig canvas{position:absolute;inset:0;width:100%;height:100%}
+.bench{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:14px;margin-top:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h2{font:700 21px/1.1 "Barlow Condensed",sans-serif;margin:0 0 10px}
+.big{font:700 44px/1 "Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+button,select{font:600 16px Barlow,sans-serif;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button.go{background:var(--tape);border-color:var(--tape);color:#fff}
+button.tap{width:100%;min-height:72px;font-size:22px;background:var(--flag);border-color:var(--flag);color:#fff}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--flag);outline-offset:2px}
+input[type=range]{width:100%;height:44px;accent-color:var(--tape)}
+.ends{display:flex;justify-content:space-between;color:var(--mute);font-size:14px;margin-top:-6px}
+label.chk{display:flex;gap:10px;align-items:center;min-height:40px;cursor:pointer}
+label.chk input{width:20px;height:20px;accent-color:var(--tape)}
+.note{color:var(--mute);font-size:14px;margin:8px 0 0}
+.readout{font-variant-numeric:tabular-nums;white-space:nowrap}
+#hz{font-weight:600}
+.answers{margin-top:14px}.ver{margin-top:18px}.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-weight:600;font-size:14px;color:var(--mute);white-space:normal;vertical-align:bottom}
+th:first-child,td:first-child{text-align:left}
+tbody tr:nth-child(-n+3) td:first-child{font-weight:600}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div class="band"><div class="wrap">
+ <h1>Slinky harmonics lab</h1>
+ <p class="sub">The Shaker's hand is on the left, the Holder on the right. Slowly speed up the hand until the slinky settles into 1, 2, then 3 clean loops. Time 10 seconds, count cycles, and drag the orange flags to measure one loop.</p>
+ <div class="fig" id="fig"><canvas id="cv"></canvas></div>
+
+ <div class="bench">
+  <div class="card">
+   <h2>Shaker: hand speed</h2>
+   <input type="range" id="freq" min="0.2" max="5" step="0.005" value="0.4" aria-label="Hand speed">
+   <div class="ends"><span>slower</span><span>faster</span></div>
+   <div class="row">
+    <button id="fdn" aria-label="A little slower">− nudge</button>
+    <button id="fup" aria-label="A little faster">+ nudge</button>
+    <button id="handBtn">Stop hand</button>
+    <span class="readout" id="hz" hidden></span>
+   </div>
+   <p class="note">Patterns take a few seconds to build. Change speed in small steps and wait.</p>
+  </div>
+
+  <div class="card">
+   <h2>Timer</h2>
+   <div class="big readout" id="time">10.0 s</div>
+   <div class="row">
+    <button class="go" id="tstart">Start 10 s</button>
+    <button id="treset">Reset</button>
+   </div>
+   <p class="note" id="tmsg">Timer runs on simulation time, so slow motion still gives a fair count.</p>
+  </div>
+
+  <div class="card">
+   <h2>Counter</h2>
+   <div class="big readout" id="count">0 cycles</div>
+   <div class="row"><button class="tap" id="tap">Tap each cycle (space bar)</button></div>
+   <div class="row"><button id="creset">Clear count</button></div>
+  </div>
+
+  <div class="card">
+   <h2>Recorder: measure</h2>
+   <div class="big readout" id="gap">0.00 m</div>
+   <p class="note">Distance between the two orange flags. Drag them to the still points on either side of one loop.</p>
+   <div class="row">
+    <label for="len">Slinky length</label>
+    <select id="len"></select>
+    <select id="ten" aria-label="Slinky stretch">
+     <option value="2.8">Loose slinky</option>
+     <option value="3.6" selected>Standard slinky</option>
+     <option value="4.6">Tight slinky</option>
+    </select>
+   </div>
+  </div>
+
+  <div class="card">
+   <h2>Playback</h2>
+   <div class="row">
+    <button id="pause">Pause</button>
+    <select id="spd" aria-label="Playback speed">
+     <option value="1">Real speed</option><option value="0.5">½ speed</option><option value="0.25">¼ speed</option>
+    </select>
+    <button class="go" id="calm">Reset slinky (still and straight)</button>
+   </div>
+  </div>
+
+  <div class="card">
+   <h2>Teacher tools</h2>
+   <label class="chk"><input type="checkbox" id="showEnv"> Show extremes and still points</label>
+   <label class="chk"><input type="checkbox" id="showHz"> Show hand frequency (Hz)</label>
+   <label class="chk"><input type="checkbox" id="showAns"> Show answer key</label>
+   <div class="row" id="snap">
+    <span>Jump to:</span>
+    <button data-n="1">1 loop</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button>
+   </div>
+   <p class="note">Leave these off while students collect data.</p>
+  </div>
+ </div>
+ <div class="card answers" id="ans" hidden>
+  <h2>Answer key</h2>
+  <p class="note" id="ansNote"></p>
+  <div class="scroll"><table>
+   <thead><tr><th># of loops</th><th>Cycles in 10 s</th><th>Length of one loop (m)</th><th>Frequency (Hz)</th><th>Wavelength (m)</th><th>Frequency × wavelength (m/s)</th></tr></thead>
+   <tbody id="ansBody"></tbody>
+  </table></div>
+  <p class="note">Pattern: frequency goes up by the same step each time (1×, 2×, 3×, 4× the first), wavelength shrinks (2L, L, 2L/3, L/2), and their product stays the same. That constant is the wave speed in this slinky. Student counts within about ±1 cycle are normal, since they count whole cycles.</p>
+ </div>
+</div>
+ <p class="note ver">Slinky Harmonics Lab · version 1.3 · Nov 20, 2026</p>
+</div></div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const cv=$('cv'),fig=$('fig'),ctx=cv.getContext('2d');
+const N=120,GAMMA=0.3;let AMP=0.036;
+let L=3,v=3.6,f=0.4,phase=0,simT=0,paused=false,speed=1,shaking=true;
+let y,yp,yn,env,dx,dt;
+let acc=0,flags=[1.0,2.0],drag=-1,W=0,H=0,dpr=1;
+let timer={on:false,left:10},count=0,audio=null;
+
+for(let m=2;m<=5;m+=0.5){$('len').insertAdjacentHTML('beforeend',`<option value="${m}" ${m===3?'selected':''}>${m.toFixed(1)} m</option>`)}
+
+function build(){AMP=0.036*L/v;acc=0;y=new Float64Array(N+1);yp=new Float64Array(N+1);yn=new Float64Array(N+1);env=new Float64Array(N+1);dx=L/N;dt=0.5*dx/v}
+build();
+
+function step(h){
+ const c2=(v*dt/dx)**2,g=GAMMA*dt/2,decay=Math.exp(-dt/1.6);
+ acc+=h;
+ while(acc>=dt){acc-=dt;
+  for(let i=1;i<N;i++)yn[i]=(2*y[i]-(1-g)*yp[i]+c2*(y[i+1]-2*y[i]+y[i-1]))/(1+g);
+  if(shaking)phase+=2*Math.PI*f*dt;yn[0]=shaking?AMP*Math.sin(phase):0;yn[N]=0;
+  const t=yp;yp=y;y=yn;yn=t;simT+=dt;
+  for(let i=0;i<=N;i++){const a=Math.abs(y[i]);env[i]=a>env[i]*decay?a:env[i]*decay}
+  if(timer.on){timer.left-=dt;if(timer.left<=0){timer.left=0;timer.on=false;locked=true;beep(440,0.5);$('tmsg').textContent=`Stop! ${count} cycles counted in 10 s. Press Clear count or Start to go again.`}}
+ }
+}
+
+function size(){dpr=window.devicePixelRatio||1;W=fig.clientWidth;H=fig.clientHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+new ResizeObserver(size).observe(fig);size();
+
+const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches};
+const PAL={light:{'--floorA':'#e2c79a','--floorB':'#d6b884','--ink':'#1b1d20','--tape':'#2f7fd1','--flag':'#f0641e',env:'rgba(20,20,20,.6)',dot:'#111'},
+ dark:{'--floorA':'#5a4632','--floorB':'#4e3c2b','--ink':'#eceae4','--tape':'#3d8de0','--flag':'#ff7a33',env:'rgba(255,255,255,.7)',dot:'#fff'}};
+const css=n=>PAL[isDark()?'dark':'light'][n];
+function geom(){const m=Math.max(46,W*0.07);return{x0:m,ppm:(W-2*m)/L,cy:H*0.43,ys:H*0.3/0.27}}
+const yAt=x=>{const s=Math.min(N-1e-9,Math.max(0,x/dx)),i=Math.floor(s),u=s-i;return y[i]*(1-u)+y[i+1]*u};
+
+function draw(){
+ const g=geom(),X=x=>g.x0+x*g.ppm,Y=d=>g.cy-d*g.ys;
+ // floor boards
+ const bh=Math.max(34,H/7);
+ for(let r=0;r*bh<H;r++){ctx.fillStyle=r%2?css('--floorA'):css('--floorB');ctx.fillRect(0,r*bh,W,bh);
+  ctx.fillStyle='rgba(0,0,0,.07)';ctx.fillRect(0,r*bh,W,1.2);const off=(r*173)%Math.max(1,W);ctx.fillRect(off,r*bh,1.2,bh)}
+ // painter's tape
+ for(const xx of [X(0),X(L)]){ctx.fillStyle='rgba(0,0,0,.18)';ctx.fillRect(xx-10,g.cy-H*0.36+3,20,H*0.72);ctx.fillStyle=css('--tape');ctx.fillRect(xx-11,g.cy-H*0.36,20,H*0.72)}
+ // envelope + nodes
+ const nodes=[];
+ if($('showEnv').checked){
+  ctx.setLineDash([7,6]);ctx.lineWidth=2;ctx.strokeStyle=css('env');
+  for(const s of [1,-1]){ctx.beginPath();for(let i=0;i<=N;i++){const px=X(i*dx),py=Y(s*env[i]);i?ctx.lineTo(px,py):ctx.moveTo(px,py)}ctx.stroke()}
+  ctx.setLineDash([]);let mx=0;for(const e of env)mx=Math.max(mx,e);
+  if(mx>0.08)for(let i=2;i<N;i++)if(env[i]<env[i-1]&&env[i]<=env[i+1]&&env[i]<0.2*mx)nodes.push(X(i*dx));
+ }
+ // slinky coil
+ const coils=Math.round(26*L),pts=coils*16,rx=Math.max(2.5,g.ppm/coils*0.6),ry=Math.max(7,H*0.028);
+ const cxs=new Float64Array(pts+1),cys=new Float64Array(pts+1),txs=new Float64Array(pts+1),tys=new Float64Array(pts+1);
+ for(let k=0;k<=pts;k++){const x=k/pts*L,e=L/400;cxs[k]=X(x);cys[k]=Y(yAt(x));const sx=g.ppm*2*e,sy=Y(yAt(Math.min(L,x+e)))-Y(yAt(Math.max(0,x-e))),m=Math.hypot(sx,sy);txs[k]=sx/m;tys[k]=sy/m}
+ const path=sh=>{ctx.beginPath();for(let k=0;k<=pts;k++){const th=k/pts*coils*2*Math.PI,a=rx*Math.cos(th),b=ry*Math.sin(th);const px=cxs[k]+a*txs[k]-b*tys[k]+sh,py=cys[k]+a*tys[k]+b*txs[k]+sh;k?ctx.lineTo(px,py):ctx.moveTo(px,py)}};
+ ctx.lineJoin='round';path(3);ctx.strokeStyle='rgba(0,0,0,.18)';ctx.lineWidth=3;ctx.stroke();
+ path(0);ctx.strokeStyle='#6f7780';ctx.lineWidth=2.6;ctx.stroke();path(-0.8);ctx.strokeStyle='#e9eef2';ctx.lineWidth=1;ctx.stroke();
+ for(const px of [...nodes,$('showEnv').checked?X(0):null,$('showEnv').checked?X(L):null].filter(q=>q!==null)){ctx.fillStyle=css('dot');ctx.strokeStyle=css('--flag');ctx.lineWidth=3;ctx.beginPath();ctx.arc(px,g.cy,8,0,7);ctx.fill();ctx.stroke()}
+ // hands
+ const hand=(px,py,lab)=>{ctx.fillStyle='rgba(0,0,0,.2)';ctx.beginPath();ctx.arc(px+3,py+4,15,0,7);ctx.fill();ctx.fillStyle='#e7b48f';ctx.beginPath();ctx.arc(px,py,15,0,7);ctx.fill();ctx.strokeStyle='#9c6b4b';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle=css('--ink');ctx.font='600 14px Barlow, sans-serif';ctx.textAlign='center';ctx.fillText(lab,px,g.cy-H*0.36-8)};
+ hand(X(0),Y(y[0]),'Shaker');hand(X(L),Y(0),'Holder');
+ // tape measure
+ const ty=H-34;ctx.fillStyle='#f3cf2c';ctx.fillRect(X(0),ty,L*g.ppm,26);ctx.fillStyle='#1b1b1b';ctx.font='600 12px Barlow, sans-serif';ctx.textAlign='center';
+ const minor=g.ppm>200?0.05:0.1;
+ for(let k=0;k<=Math.round(L/minor);k++){const m=k*minor,px=X(m),major=Math.abs(m*2-Math.round(m*2))<1e-6;ctx.fillRect(px-0.5,ty,1,major?13:6);if(major)ctx.fillText(m.toFixed(1),Math.min(px,X(L)-10),ty+24)}
+ // flags
+ flags.forEach((m,i)=>{const px=X(m);ctx.strokeStyle=css('--flag');ctx.lineWidth=2;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(px,ty);ctx.lineTo(px,g.cy-H*0.34);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=css('--flag');ctx.beginPath();ctx.moveTo(px,ty-2);ctx.lineTo(px-11,ty-22);ctx.lineTo(px+11,ty-22);ctx.closePath();ctx.fill()});
+ const a=Math.min(...flags),b=Math.max(...flags);
+ $('gap').textContent=(b-a).toFixed(2)+' m';
+}
+
+function frame(ts){const h=Math.min(0.05,(ts-(frame.last||ts))/1000);frame.last=ts;if(!paused)step(h*speed);draw();
+ $('time').textContent=timer.left.toFixed(1)+' s';requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+
+function beep(hz,dur){try{audio=audio||new AudioContext();const o=audio.createOscillator(),gn=audio.createGain();o.frequency.value=hz;gn.gain.value=0.15;o.connect(gn).connect(audio.destination);o.start();o.stop(audio.currentTime+dur)}catch(e){}}
+
+function setF(x){setHand(true);f=Math.min(5,Math.max(0.2,x));$('freq').value=f;$('hz').textContent=f.toFixed(2)+' Hz'}
+$('freq').addEventListener('input',e=>setF(+e.target.value));
+$('fup').onclick=()=>setF(f+0.01);$('fdn').onclick=()=>setF(f-0.01);
+function answers(){
+ $('ansNote').textContent=`For the current setup: slinky length ${L.toFixed(1)} m, wave speed ${v.toFixed(1)} m/s (${$('ten').selectedOptions[0].text.toLowerCase()}). The 4-loop row is the answer to the worksheet's prediction question.`;
+ $('ansBody').innerHTML=[1,2,3,4].map(n=>{const fr=n*v/(2*L),lam=2*L/n;return`<tr><td>${n}${n===4?' (prediction)':''}</td><td>${(10*fr).toFixed(1)}</td><td>${(L/n).toFixed(2)}</td><td>${fr.toFixed(2)}</td><td>${lam.toFixed(2)}</td><td>${(fr*lam).toFixed(1)}</td></tr>`}).join('')}
+$('showAns').onchange=e=>{$('ans').hidden=!e.target.checked;answers();if(e.target.checked)$('ans').scrollIntoView({behavior:'smooth',block:'nearest'})};
+$('showHz').onchange=e=>{$('hz').hidden=!e.target.checked};
+$('snap').addEventListener('click',e=>{const n=+e.target.dataset.n;if(n)setF(n*v/(2*L))});
+$('tstart').onclick=()=>{timer={on:true,left:10};locked=false;count=0;showCount();beep(880,0.15);$('tmsg').textContent='Go! Counter, tap once per cycle.'};
+$('treset').onclick=()=>{timer={on:false,left:10};locked=false;$('tmsg').textContent='Timer runs on simulation time, so slow motion still gives a fair count.'};
+function showCount(){$('count').textContent=count+(count===1?' cycle':' cycles')}
+let locked=false;function tapCount(){if(locked)return;count++;showCount()}
+$('tap').onclick=tapCount;$('creset').onclick=()=>{locked=false;count=0;showCount()};
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!/SELECT|TEXTAREA/.test(e.target.tagName)){e.preventDefault();tapCount()}});
+$('pause').onclick=e=>{paused=!paused;e.target.textContent=paused?'Play':'Pause'};
+$('spd').onchange=e=>{speed=+e.target.value};
+function setHand(on){if(on&&!shaking)phase=0;shaking=on;$('handBtn').textContent=on?'Stop hand':'Start hand'}
+$('handBtn').onclick=()=>setHand(!shaking);
+$('calm').onclick=()=>{build();phase=0;setHand(false)};
+$('len').onchange=e=>{L=+e.target.value;flags=flags.map(m=>Math.min(m,L));build();answers()};
+$('ten').onchange=e=>{v=+e.target.value;build();answers()};
+setF(f);setHand(true);
+
+// drag flags
+const toM=cx=>{const g=geom(),r=cv.getBoundingClientRect();return(cx-r.left-g.x0)/g.ppm};
+cv.addEventListener('pointerdown',e=>{const m=toM(e.clientX),g=geom();let best=-1,bd=1e9;flags.forEach((q,i)=>{const d=Math.abs(q-m)*g.ppm;if(d<bd){bd=d;best=i}});if(bd<40){drag=best;cv.setPointerCapture(e.pointerId)}});
+cv.addEventListener('pointermove',e=>{if(drag<0)return;flags[drag]=Math.round(Math.min(L,Math.max(0,toM(e.clientX)))*100)/100});
+cv.addEventListener('pointerup',()=>{drag=-1});
+}
+</script>
+</body>
+</html>
